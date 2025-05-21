@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Smart Bin Dashboard</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+  margin: 0;
+  min-height: 100vh;
+  background: url('waste.avif') no-repeat center center fixed;
+  background-size: cover;
+  position: relative;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-color: rgba(0, 0, 0, 0.4); /* overlay */
+  z-index: 0;
+}
+
+#page-content {
+  position: relative;
+  z-index: 1;
+  background-color: rgba(255, 255, 255, 0.9); /* semi-transparent white background */
+  margin: 40px auto;
+  max-width: 480px;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+}
+
+    h1 {
+      text-align: center;
+      margin-bottom: 30px;
+      color: #2c3e50;
+      font-weight: 700;
+      letter-spacing: 1px;
+    }
+    #loginForm, #dashboard {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+    label {
+      font-weight: 600;
+      margin-bottom: 5px;
+      color: #34495e;
+    }
+    input[type="text"] {
+      padding: 10px;
+      font-size: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      transition: border-color 0.3s ease;
+    }
+    input[type="text"]:focus {
+      border-color: #2980b9;
+      outline: none;
+      box-shadow: 0 0 5px #2980b9;
+    }
+    button {
+      padding: 12px;
+      font-size: 1rem;
+      font-weight: 700;
+      background-color: #2980b9;
+      border: none;
+      color: white;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+    button:hover {
+      background-color: #1f618d;
+    }
+    #loginMsg {
+      color: #e74c3c;
+      font-weight: 600;
+      min-height: 1.2em;
+    }
+
+    /* Dashboard cards */
+    .card-container {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .card {
+      display: flex;
+      align-items: center;
+      background-color: white;
+      padding: 18px 24px;
+      border-radius: 10px;
+      box-shadow: 0 4px 12px rgb(0 0 0 / 0.08);
+      font-weight: 700;
+      font-size: 1.2rem;
+      color: #2c3e50;
+      gap: 16px;
+    }
+    .card .icon {
+      font-size: 2.2rem;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      color: white;
+      flex-shrink: 0;
+    }
+    .card.fill-level .icon {
+      background-color: #27ae60;
+    }
+    .card.user .icon {
+      background-color: #2980b9;
+    }
+    .card.points .icon {
+      background-color: #f39c12;
+    }
+
+    /* Logout button distinct */
+    #logout {
+      margin-top: 25px;
+      background-color: #c0392b;
+      font-weight: 700;
+      font-size: 1.1rem;
+      border-radius: 8px;
+      padding: 14px;
+    }
+    #logout:hover {
+      background-color: #922b21;
+    }
+
+    @media (max-width: 480px) {
+      body {
+        margin: 20px;
+        padding: 15px;
+      }
+      .card {
+        font-size: 1.1rem;
+      }
+      .card .icon {
+        font-size: 1.8rem;
+        width: 36px;
+        height: 36px;
+      }
+    }
+  </style>
+  <!-- Using simple emoji icons for ease, can replace with SVG or font icons -->
+</head>
+<body>
+  <div id="page-content">
+    <div id="logo-container" style="text-align:center; margin-bottom: 30px;">
+      <img src="logo.png" alt="Smart Dustbin Logo" style="max-width: 200px; height: auto;" />
+    </div>
+
+
+    <!-- LOGIN FORM -->
+    <div id="loginForm">
+      <label for="uidInput">Enter your RFID UID (hex):</label>
+      <input type="text" id="uidInput" placeholder="e.g. A15A893F" maxlength="8" autocomplete="off" />
+      <button id="loginBtn">Login</button>
+      <p id="loginMsg"></p>
+    </div>
+
+    <!-- DASHBOARD -->
+    <div id="dashboard" class="hidden" style="display:none;">
+            <div class="card user">
+          <div class="icon">🙍‍♂️</div>
+          <div>User: <span id="userName">--</span></div>
+        </div>
+      <div class="card-container">
+        <div class="card fill-level">
+          <div class="icon">♻️</div>
+          <div>Bin Fill Level: <span id="binFill">-- %</span></div>
+        </div>
+
+        <div class="card points">
+          <div class="icon">🏆</div>
+          <div>Your Points: <span id="userPoints">-- pts</span></div>
+        </div>
+      </div>
+      <button id="logout">Logout</button>
+    </div>
+  </div>
+  
+
+  <script>
+    const AUTH_TOKEN = "KVEtfju8_meOKMQimKIas8an3D-wJ6C-";
+
+    const USERS = {
+      "A15A893F": { name: "S.I.M Adnan" },
+      "932BEF2F": { name: "Mahfuz Anam" }
+    };
+
+    const ALLOWED_UIDS = Object.keys(USERS);
+
+    let currentUID = null;
+    let updateTimer = null;
+
+    function parseLeaderboard(text) {
+      const map = {};
+      text.split("\n").forEach(line => {
+        line = line.trim();
+        if (!line) return;
+        const m = line.match(/^([0-9A-Fa-f]{8})\s*:\s*(\d+)\s*pts$/);
+        if (m) {
+          const uid = m[1].toUpperCase();
+          const pts = parseInt(m[2]);
+          if (!isNaN(pts)) map[uid] = pts;
+        }
+      });
+      return map;
+    }
+
+    async function fetchVpin(pin) {
+      const url = `https://blynk.cloud/external/api/get?token=${AUTH_TOKEN}&pin=${pin}`;
+      try {
+        const res = await fetch(url);
+        const text = await res.text();
+        if (pin === "V0") {
+          try {
+            return JSON.parse(text);
+          } catch {
+            console.error("Failed to parse V0 JSON:", text);
+            return null;
+          }
+        } else {
+          return text;
+        }
+      } catch (e) {
+        console.error('Error fetching pin', pin, e);
+        return null;
+      }
+    }
+
+    async function updateDashboard() {
+      const fillData = await fetchVpin("V0");
+      if (fillData !== null && fillData !== undefined) {
+        let value = 0;
+        if (Array.isArray(fillData)) {
+          value = fillData[0];
+        } else if (typeof fillData === "number") {
+          value = fillData;
+        } else if (typeof fillData === "string" && fillData.trim() !== "") {
+          value = Number(fillData);
+        }
+        if (!isNaN(value)) {
+          document.getElementById("binFill").innerText = value + " %";
+        } else {
+          document.getElementById("binFill").innerText = "No data";
+        }
+      } else {
+        document.getElementById("binFill").innerText = "No data";
+      }
+
+      const lbData = await fetchVpin("V1");
+      if (typeof lbData === "string" && lbData.length > 0) {
+        const ptsMap = parseLeaderboard(lbData);
+        const myPts = ptsMap[currentUID] ?? 0;
+        document.getElementById("userPoints").innerText = myPts + " pts";
+      } else {
+        document.getElementById("userPoints").innerText = "No data";
+      }
+    }
+
+    document.getElementById("loginBtn").addEventListener("click", () => {
+      const input = document.getElementById("uidInput").value.trim().toUpperCase();
+      if (ALLOWED_UIDS.includes(input)) {
+        currentUID = input;
+        const userName = USERS[currentUID].name;
+        document.getElementById("userName").innerText = userName;
+        document.getElementById("loginForm").style.display = "none";
+        document.getElementById("dashboard").style.display = "flex";
+        document.getElementById("loginMsg").innerText = "";
+        updateDashboard();
+        updateTimer = setInterval(updateDashboard, 5000);
+      } else {
+        document.getElementById("loginMsg").innerText = "Unknown UID, try again.";
+      }
+    });
+
+    document.getElementById("logout").addEventListener("click", () => {
+      clearInterval(updateTimer);
+      currentUID = null;
+      document.getElementById("userName").innerText = "--";
+      document.getElementById("uidInput").value = "";
+      document.getElementById("dashboard").style.display = "none";
+      document.getElementById("loginForm").style.display = "flex";
+    });
+  </script>
+</body>
+</html>
